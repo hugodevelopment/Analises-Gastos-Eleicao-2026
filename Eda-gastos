@@ -1,0 +1,23 @@
+import pandas as pd
+
+df_rec = pd.read_csv('data/processed/receitas_clean.csv', sep=';', encoding='utf-8')
+
+# Calculate Public Funds Metrics
+public_sources = ['FUNDO ESPECIAL', 'FUNDO PARTIDARIO']
+df_rec['is_publico'] = df_rec['ds_fonte_receita'].isin(public_sources)
+
+tot_geral = df_rec['vr_receita'].sum()
+tot_publico = df_rec[df_rec['is_publico']]['vr_receita'].sum()
+tot_privado = df_rec[~df_rec['is_publico']]['vr_receita'].sum()
+
+print(f"Total Geral: R$ {tot_geral:,.2f}")
+print(f"Total Público: R$ {tot_publico:,.2f} ({tot_publico/tot_geral*100:.2f}%)")
+print(f"Total Privado/Outros: R$ {tot_privado:,.2f} ({tot_privado/tot_geral*100:.2f}%)")
+
+# Breakdown of public funds by Fonte
+print("\n--- Breakdown de Fontes Públicas ---")
+print(df_rec[df_rec['is_publico']].groupby('ds_fonte_receita')['vr_receita'].agg(['sum', 'count']))
+
+# Breakdown of public funds by Cargo
+print("\n--- Verba Pública por Cargo ---")
+print(df_rec[df_rec['is_publico']].groupby('ds_cargo')['vr_receita'].sum().sort_values(ascending=False))
