@@ -52,14 +52,16 @@ print(df_candidato_summary.describe())
 
 ### 🔍 Descobertas Críticas do EDA
 * **Efeito Pareto (Cauda Longa):** Uma fração mínima de candidaturas majoritárias (como as lideradas por *Douglas Ruas* e *Eduardo Paes*) concentra a maior parte dos repasses dos diretórios nacionais.
-* **Saturação de Rubricas:** Mais de **60%** de todo o orçamento contratado no Rio de Janeiro está restrito a apenas 4 categorias de despesas.
 
 ---
 
 ## 📈 Insights da Versão 1.0 (Visão Executiva)
 
 ### 1. Origem dos Recursos
-* **Predomínio Público:** **91,14%** (R$ 441,60 Mi) de todo o financiamento eleitoral fluminense provém do Fundão (FEFC), evidenciando a dependência do caixa estatal em relação ao capital privado (8,86% | R$ 42,93 Mi).
+* **Predomínio Público:** **91,14%** (R$ 441,60 Mi) de todo o financiamento eleitoral fluminense provém do Fundão (FEFC), evidenciando a dependência do caixa estatal em relação ao capital privado (8,86% | R$ 42,93 Mi)
+
+* <img width="4200" height="1500" alt="eda_dinheiro_publico" src="https://github.com/user-attachments/assets/e4aa18e6-7853-4e99-84ae-ed31db509400" />
+
 
 ### 2. Market Share Financeiro por Legenda (Top 5)
 
@@ -74,32 +76,14 @@ print(df_candidato_summary.describe())
 ### 3. O Mito do Marketing Digital Puro
 Embora as ferramentas online tenham forte apelo visual, o tráfego pago (Impulsionamento de Conteúdo) consumiu **R$ 28 Milhões**. A engrenagem tradicional offline — **Despesas com Pessoal (R$ 63 Mi)** e **Militância/Mobilização de Rua (R$ 49 Mi)** — consome o **triplo** do orçamento digital.
 
+<img width="4800" height="3600" alt="eda_despesas" src="https://github.com/user-attachments/assets/c352d255-b9fd-4a4b-a9ae-a441dfbe586a" />
+
 ---
 
 ## 🏗️ Arquitetura de Dados & Modelagem Técnica
 
 O modelo foi estruturado em um padrão puramente dimensional **Star Schema (Esquema Estrela)** para garantir a eliminação de relacionamentos muitos-para-muitos e maximizar a performance das consultas DAX.
 
-Use o código com cuidado.
-┌───────────────────┐
-│   dim_candidato   │
-└─────────┬─────────┘
-│
-┌─────────────┴─────────────┐
-│ 1                         │ 1
-▼ *                         ▼ *
-┌───────────────────┐       ┌───────────────────┐
-│   fato_receitas   │       ┌   fato_despesas   │
-└───────────────────┘       └───────────────────┘
-▲                           ▲
-│ *                         │ *
-└─────────────┬─────────────┘
-│ 1
-┌─────────┴─────────┐
-│    dim_doador     │
-└───────────────────┘
-
----
 
 ## 📐 Biblioteca de Métricas DAX
 
