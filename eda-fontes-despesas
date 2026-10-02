@@ -1,0 +1,84 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+sns.set_theme(style="whitegrid")
+
+df_desp = pd.read_csv('data/processed/despesas_clean.csv', sep=';', encoding='utf-8')
+
+# General Metrics
+tot_desp = df_desp['vr_despesa'].sum()
+qtd_desp = len(df_desp)
+avg_desp = df_desp['vr_despesa'].mean()
+
+print(f"Total Despesas: R$ {tot_desp:,.2f}")
+print(f"Qtd Transações de Despesa: {qtd_desp:,}")
+print(f"Ticket Médio por Despesa: R$ {avg_desp:,.2f}")
+
+# 1. Quem mais gastou (Top 10 Candidatos)
+top_cand = df_desp.groupby(['id_candidato', 'nm_candidato', 'sg_partido', 'ds_cargo'])['vr_despesa'].sum().reset_index()
+top_cand = top_cand.sort_values('vr_despesa', ascending=False)
+print("\n--- TOP 10 CANDIDATOS QUE MAIS GASTARAM ---")
+print(top_cand.head(10).to_string(index=False))
+
+# 2. Para onde o dinheiro mais vai (Tipos de Despesa / Origem)
+top_tipo = df_desp.groupby('ds_origem_despesa')['vr_despesa'].agg(['sum', 'count']).reset_index()
+top_tipo['pct'] = (top_tipo['sum'] / tot_desp) * 100
+top_tipo = top_tipo.sort_values('sum', ascending=False)
+print("\n--- TOP 10 CATEGORIAS DE DESPESA (PARA ONDE VAI O DINHEIRO) ---")
+print(top_tipo.head(10).to_string(index=False))
+
+# 3. Maiores Fornecedores
+top_forn = df_desp.groupby(['nr_cpf_cnpj_fornecedor', 'nm_fornecedor'])['vr_despesa'].agg(['sum', 'count']).reset_index()
+top_forn['pct'] = (top_forn['sum'] / tot_desp) * 100
+top_forn = top_forn.sort_values('sum', ascending=False)
+print("\n--- TOP 10 FORNECEDORES QUE MAIS RECEBERAM ---")
+print(top_forn.head(10).to_string(index=False))
+
+# 4. Despesas por Cargo
+top_cargo = df_desp.groupby('ds_cargo')['vr_despesa'].sum().reset_index().sort_values('vr_despesa', ascending=False)
+print("\n--- DESPESAS POR CARGO ---")
+print(top_cargo.to_string(index=False))
+
+fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+# Chart 1: Top 7 Categorias de Despesas (Onde se gasta mais)
+df_cat = top_tipo.head(7).copy()
+df_cat['sum_mi'] = df_cat['sum'] / 1e6
+sns.barplot(data=df_cat, x='sum_mi', y='ds_origem_despesa', palette='Blues_r', ax=axes[0, 0])
+axes[0, 0].set_title('Top 7 Categorias de Despesas (R$ Mi)', fontweight='bold', fontsize=12)
+axes[0, 0].set_xlabel('R$ Milhões')
+axes[0, 0].set_ylabel('')
+
+# Chart 2: Top 7 Maiores Fornecedores
+df_forn_plot = top_forn.head(7).copy()
+df_forn_plot['sum_mi'] = df_forn_plot['sum'] / 1e6
+# truncate names for plot
+df_forn_plot['nm_curto'] = df_forn_plot['nm_fornecedor'].str[:28]
+sns.barplot(data=df_forn_plot, x='sum_mi', y='nm_curto', palette='Oranges_r', ax=axes[0, 1])
+axes[0, 1].set_title('Top 7 Fornecedores Mais Pagos (R$ Mi)', fontweight='bold', fontsize=12)
+axes[0, 1].set_xlabel('R$ Milhões')
+axes[0, 1].set_ylabel('')
+
+# Chart 3: Top 7 Candidatos que Mais Gastaram
+df_cand_plot = top_cand.head(7).copy()
+df_cand_plot['sum_mi'] = df_cand_plot['vr_despesa'] / 1e6
+sns.barplot(data=df_cand_plot, x='sum_mi', y='nm_candidato', palette='Purples_r', ax=axes[1, 0])
+axes[1, 0].set_title('Top 7 Candidatos que Mais Gastaram (R$ Mi)', fontweight='bold', fontsize=12)
+axes[1, 0].set_xlabel('R$ Milhões')
+axes[1, 0].set_ylabel('')
+
+# Chart 4: Despesas por Cargo
+df_cargo_plot = top_cargo.copy()
+df_cargo_plot['sum_mi'] = df_cargo_plot['vr_despesa'] / 1e6
+sns.barplot(data=df_cargo_plot, x='ds_cargo', y='sum_mi', palette='Greens_r', ax=axes[1, 1])
+axes[1, 1].set_title('Despesas Totais por Cargo (R$ Mi)', fontweight='bold', fontsize=12)
+axes[1, 1].set_ylabel('R$ Milhões')
+axes[1, 1].set_xlabel('')
+
+plt.tight_layout()
+#os.makedirs('docs', exist_ok=True)
+plt.savefig('docs/eda_despesas.png', dpi=300)
+plt.show()
+print("Gráfico de despesas salvo com sucesso!")
