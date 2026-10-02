@@ -1,0 +1,125 @@
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+sns.set_theme(style="whitegrid")
+
+
+def build_star_schema(df_receitas, df_despesas=None):
+    """Gera as tabelas do Star Schema (Dimensões e Fatos)."""
+    print("\n[1/3] Estruturando Tabelas do Star Schema...")
+
+    # 1. Dim_Candidato
+    cols_cand = ['id_candidato', 'nm_candidato', 'ds_cargo', 'sg_partido', 'ds_genero', 'ds_cor_raca']
+    dim_candidato = df_receitas[cols_cand].drop_duplicates(subset=['id_candidato'])
+    
+    if df_despesas is not None:
+        cand_desp = df_despesas[['id_candidato', 'nm_candidato', 'ds_cargo', 'sg_partido']].drop_duplicates(subset=['id_candidato'])
+        dim_candidato = pd.concat([dim_candidato, cand_desp]).drop_duplicates(subset=['id_candidato'])
+
+    # 2. Dim_Pessoa_Empresa (Entidades Unificadas)
+    doadores = df_receitas[['nr_cpf_cnpj_doador', 'nm_doador']].rename(
+        columns={'nr_cpf_cnpj_doador': 'nr_cpf_cnpj', 'nm_doador': 'nm_pessoa_empresa'}
+    )
+    if df_despesas is not None:
+        fornecedores = df_despesas[['nr_cpf_cnpj_fornecedor', 'nm_fornecedor']].rename(
+            columns={'nr_cpf_cnpj_fornecedor': 'nr_cpf_cnpj', 'nm_fornecedor': 'nm_pessoa_empresa'}
+        )
+        dim_pessoa_empresa = pd.concat([doadores, fornecedores])
+    else:
+        dim_pessoa_empresa = doadores
+
+    dim_pessoa_empresa = dim_pessoa_empresa.dropna(subset=['nr_cpf_cnpj']).drop_duplicates(subset=['nr_cpf_cnpj'])
+
+    # 3. Fato_Receitas (inclui coluna booleana de verba pública)
+    fato_receitas = df_receitas[[
+        'id_receita', 'id_candidato', 'nr_cpf_cnpj_doador', 'dt_receita',
+        'vr_receita', 'ds_fonte_receita', 'ds_origem_receita',
+        'ds_especie_receita', 'ds_natureza_receita'
+    ]].copy()
+    
+    fato_receitas['fl_verba_publica'] = fato_receitas['ds_fonte_receita'].isin(['FUNDO ESPECIAL', 'FUNDO PARTIDARIO']).astype(int)
+
+    # 4. Fato_Despesas
+    fato_despesas = None
+    if df_despesas is not None:
+        fato_despesas = df_despesas[[
+            'id_despesa', 'id_candidato', 'nr_cpf_cnpj_fornecedor', 'dt_despesa',
+            'vr_despesa', 'ds_origem_despesa', 'ds_despesa'
+        ]].copy()
+
+    return dim_candidato, dim_pessoa_empresa, fato_receitas, fato_despesas
+
+
+def run_public_funds_eda(dim_candidato, fato_receitas):
+    """Executa a Análise Exploratória focada em Recursos Públicos vs. Privados."""
+    print("\n[2/3] Diagnóstico da Análise de Dinheiro Público (EDA):")
+    
+    df_merged = fato_receitas.merge(dim_candidato, on='id_candidato', how='left')
+    
+    tot_geral = fato_receitas['vr_receita'].sum()
+    df_pub = fato_receitas[fato_receitas['fl_verba_publica'] == 1]
+    tot_pub = df_pub['vr_receita'].sum()
+    tot_priv = tot_geral - tot_pub
+
+    print(f"  • Volume Total Arrecadado: R$ {tot_geral:,.2f}")
+    print(f"  • Verba Pública (FEFC + FP): R$ {tot_pub:,.2f} ({tot_pub/tot_geral*100:.2f}%)")
+    print(f"  • Verba Privada/Outros:    R$ {tot_priv:,.2f} ({tot_priv/tot_geral*100:.2f}%)")
+
+    # Gráfico de Distribuição por Cargo e Fonte
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Chart 1: Proporção Público vs Privado
+    df_fonte_agg = fato_receitas.groupby('fl_verba_publica')['vr_receita'].sum().reset_index()
+    df_fonte_agg['Tipo'] = df_fonte_agg['fl_verba_publica'].map({1: 'Verba Pública', 0: 'Recursos Privados/Outros'})
+    df_fonte_agg['VR_Milhoes'] = df_fonte_agg['vr_receita'] / 1e6
+    
+    sns.barplot(data=df_fonte_agg, x='Tipo', y='VR_Milhoes', palette=['#1f77b4', '#2ca02c'], ax=axes[0])
+    axes[0].set_title('Origem dos Recursos: Público vs. Privado (R$ Mi)', fontweight='bold')
+    axes[0].set_ylabel('R$ Milhões')
+    
+    # Chart 2: Verba Pública por Cargo
+    df_cargo_pub = df_merged[df_merged['fl_verba_publica'] == 1].groupby('ds_cargo')['vr_receita'].sum().reset_index()
+    df_cargo_pub['VR_Milhoes'] = df_cargo_pub['vr_receita'] / 1e6
+    df_cargo_pub = df_cargo_pub.sort_values('VR_Milhoes', ascending=False)
+    
+    sns.barplot(data=df_cargo_pub, x='VR_Milhoes', y='ds_cargo', palette='Blues_r', ax=axes[1])
+    axes[1].set_title('Destinação da Verba Pública por Cargo (R$ Mi)', fontweight='bold')
+    axes[1].set_xlabel('R$ Milhões')
+    
+    plt.tight_layout()
+    os.makedirs('docs', exist_ok=True)
+    plt.savefig('docs/eda_dinheiro_publico.png', dpi=300)
+    print("  [OK] Gráfico salvo em 'docs/eda_dinheiro_publico.png'")
+
+
+def export_datamarts(dim_cand, dim_pess, fato_rec, fato_desp=None, output_dir='data/processed'):
+    """Salva os Datamarts do Star Schema na pasta de dados processados."""
+    print("\n[3/3] Salva Datamarts na pasta 'data/processed/'...")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    dim_cand.to_csv(f'{output_dir}/dim_candidato.csv', index=False, sep=';', encoding='utf-8-sig')
+    dim_pess.to_csv(f'{output_dir}/dim_pessoa_empresa.csv', index=False, sep=';', encoding='utf-8-sig')
+    fato_rec.to_csv(f'{output_dir}/fato_receitas.csv', index=False, sep=';', encoding='utf-8-sig')
+    
+    if fato_desp is not None:
+        fato_desp.to_csv(f'{output_dir}/fato_despesas.csv', index=False, sep=';', encoding='utf-8-sig')
+        
+    print("  [SUCESSO] Etapa 2 finalizada com êxito!")
+
+
+if __name__ == '__main__':
+    path_rec = 'data/processed/receitas_clean.csv'
+    path_desp = 'data/processed/despesas_clean.csv'
+    
+    if os.path.exists(path_rec):
+        df_rec = pd.read_csv(path_rec, sep=';', encoding='utf-8')
+        df_desp = pd.read_csv(path_desp, sep=';', encoding='utf-8') if os.path.exists(path_desp) else None
+        
+        dim_cand, dim_pess, fato_rec, fato_desp = build_star_schema(df_rec, df_desp)
+        run_public_funds_eda(dim_cand, fato_rec)
+        export_datamarts(dim_cand, dim_pess, fato_rec, fato_desp)
+    else:
+        print("[AVISO] Execute o arquivo 'src/etl_process.py' antes de rodar este script.")
