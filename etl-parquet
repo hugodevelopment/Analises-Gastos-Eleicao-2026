@@ -1,0 +1,123 @@
+import os
+import pandas as pd
+
+
+def load_cleaned_data():
+    """Carrega os dados limpos das receitas e despesas."""
+    path_rec = 'data/processed/receitas_clean.csv' if os.path.exists('data/processed/receitas_clean.csv') else 'receitas_clean.csv'
+    path_desp = 'data/processed/despesas_clean.csv' if os.path.exists('data/processed/despesas_clean.csv') else 'despesas_clean.csv'
+
+    print("[1/4] Lendo arquivos CSV limpos...")
+    
+    # Leitura garantindo IDs como string para evitar notação científica (ex: 1.23E+11)
+    df_rec = pd.read_csv(
+        path_rec, 
+        sep=';', 
+        encoding='utf-8', 
+        dtype={
+            'id_candidato': str, 
+            'nr_cpf_cnpj_doador': str, 
+            'id_receita': str
+        }
+    )
+    
+    df_desp = None
+    if os.path.exists(path_desp):
+        df_desp = pd.read_csv(
+            path_desp, 
+            sep=';', 
+            encoding='utf-8', 
+            dtype={
+                'id_candidato': str, 
+                'nr_cpf_cnpj_fornecedor': str, 
+                'id_despesa': str
+            }
+        )
+
+    return df_rec, df_desp
+
+
+def process_and_optimize_tables(df_rec, df_desp=None):
+    """Aplica tipagem rigorosa e constrói as tabelas do Star Schema."""
+    print("[2/4] Tipando dados e construindo Star Schema...")
+
+    # Conversão de Datas para datetime
+    df_rec['dt_receita'] = pd.to_datetime(df_rec['dt_receita'], errors='coerce')
+    if df_desp is not None:
+        df_desp['dt_despesa'] = pd.to_datetime(df_desp['dt_despesa'], errors='coerce')
+
+    # 1. Dim_Candidato
+    cols_cand = ['id_candidato', 'nm_candidato', 'ds_cargo', 'sg_partido', 'ds_genero', 'ds_cor_raca']
+    cols_exist = [c for c in cols_cand if c in df_rec.columns]
+    
+    dim_cand = df_rec[cols_exist].drop_duplicates(subset=['id_candidato'])
+    
+    if df_desp is not None:
+        cand_desp = df_desp[['id_candidato', 'nm_candidato', 'ds_cargo', 'sg_partido']].drop_duplicates(subset=['id_candidato'])
+        dim_cand = pd.concat([dim_cand, cand_desp]).drop_duplicates(subset=['id_candidato'])
+
+    # 2. Dim_Pessoa_Empresa (Doadores + Fornecedores)
+    doadores = df_rec[['nr_cpf_cnpj_doador', 'nm_doador']].rename(
+        columns={'nr_cpf_cnpj_doador': 'nr_cpf_cnpj', 'nm_doador': 'nm_pessoa_empresa'}
+    )
+    
+    if df_desp is not None:
+        fornecedores = df_desp[['nr_cpf_cnpj_fornecedor', 'nm_fornecedor']].rename(
+            columns={'nr_cpf_cnpj_fornecedor': 'nr_cpf_cnpj', 'nm_fornecedor': 'nm_pessoa_empresa'}
+        )
+        dim_pess = pd.concat([doadores, fornecedores])
+    else:
+        dim_pess = doadores
+
+    dim_pess = dim_pess.dropna(subset=['nr_cpf_cnpj']).drop_duplicates(subset=['nr_cpf_cnpj'])
+
+    # 3. Fato_Receitas
+    fato_rec = df_rec[[
+        'id_receita', 'id_candidato', 'nr_cpf_cnpj_doador', 'dt_receita',
+        'vr_receita', 'ds_fonte_receita', 'ds_origem_receita',
+        'ds_especie_receita', 'ds_natureza_receita'
+    ]].copy()
+    
+    # Flag booleana de verba pública (0 ou 1)
+    fato_rec['fl_verba_publica'] = fato_rec['ds_fonte_receita'].isin(['FUNDO ESPECIAL', 'FUNDO PARTIDARIO']).astype('int8')
+
+    # 4. Fato_Despesas
+    fato_desp = None
+    if df_desp is not None:
+        fato_desp = df_desp[[
+            'id_despesa', 'id_candidato', 'nr_cpf_cnpj_fornecedor', 'dt_despesa',
+            'vr_despesa', 'ds_origem_despesa', 'ds_despesa'
+        ]].copy()
+
+    return dim_cand, dim_pess, fato_rec, fato_desp
+
+
+def export_to_parquet(dim_cand, dim_pess, fato_rec, fato_desp=None, output_dir='data/processed'):
+    """Exporta as tabelas no formato Parquet (Snappy Compression)."""
+    print("[3/4] Exportando arquivos .parquet...")
+    os.makedirs(output_dir, exist_ok=True)
+
+    tables = {
+        'dim_candidato.parquet': dim_cand,
+        'dim_pessoa_empresa.parquet': dim_pess,
+        'fato_receitas.parquet': fato_rec,
+    }
+    
+    if fato_desp is not None:
+        tables['fato_despesas.parquet'] = fato_desp
+
+    for filename, df in tables.items():
+        filepath = os.path.join(output_dir, filename)
+        # Requer pyarrow ou fastparquet instalado (pip install pyarrow)
+        df.to_parquet(filepath, engine='pyarrow', compression='snappy', index=False)
+        size_kb = os.path.getsize(filepath) / 1024
+        print(f"  • Gerado: {filepath} ({size_kb:.1f} KB)")
+
+    print("[4/4] Concluído! Todos os arquivos Parquet estão prontos para o Power BI.")
+
+
+if __name__ == '__main__':
+    # Certifique-se de ter instalado: pip install pyarrow pandas
+    df_rec, df_desp = load_cleaned_data()
+    dim_cand, dim_pess, fato_rec, fato_desp = process_and_optimize_tables(df_rec, df_desp)
+    export_to_parquet(dim_cand, dim_pess, fato_rec, fato_desp)
