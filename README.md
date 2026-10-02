@@ -1,9 +1,5 @@
 # Analises-Gastos-Eleicao-Rj-2026
 
-![Power BI](https://shields.io)
-![Python](https://shields.io)
-![Parquet](https://shields.io)
-![Status](https://shields.io)
 
 Dashboard executivo focado em **auditoria financeira, rastreabilidade e inteligência de mercado** sobre os dados de prestação de contas das **Eleições de 2026** no Estado do Rio de Janeiro, utilizando dados abertos do Tribunal Superior Eleitoral (TSE).
 
