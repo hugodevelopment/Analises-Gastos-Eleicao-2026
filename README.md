@@ -3,7 +3,10 @@
 
 Dashboard executivo focado em **auditoria financeira, rastreabilidade e inteligência de mercado** sobre os dados de prestação de contas das **Eleições de 2026** no Estado do Rio de Janeiro, utilizando dados abertos do Tribunal Superior Eleitoral (TSE).
 
+
 O projeto implementa um pipeline completo de dados: desde a **Análise Exploratória (EDA)** em Python, passando por uma modelagem dimensional **Star Schema** otimizada em arquivos **Parquet**, até a camada visual focada em tomadas de decisão estratégicas.
+
+https://github.com/user-attachments/assets/a1e18da7-94e9-4d0f-8cd1-81a10bfcfad0
 
 ---
 
